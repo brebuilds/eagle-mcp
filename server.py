@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Eagle MCP server — native Claude/agent tools over the Eagle Bridge on veggie.
+"""Eagle MCP server — native Claude/agent tools over the Eagle Bridge.
 
-Thin wrapper around the tailnet-only Eagle Bridge HTTP API (push/pull/tag/process
-POD design assets, link to Airtable). Auth via a Bearer token that lives ONLY
-server-side here — agents call the tools, never handle the secret.
+Thin wrapper around the (typically tailnet-only) Eagle Bridge HTTP API
+(push/pull/tag/process POD design assets, link to Airtable). Auth via a Bearer
+token that lives ONLY server-side here — agents call the tools, never handle
+the secret.
 
 Creds (in order of precedence):
   1. env vars EAGLE_BRIDGE_URL / EAGLE_BRIDGE_TOKEN
@@ -41,14 +42,15 @@ def _load_creds() -> tuple[str, str]:
             elif k == "EAGLE_BRIDGE_TOKEN" and not token:
                 token = v
 
-    url = (url or "https://vegetablelappy.taild64ac4.ts.net").rstrip("/")
+    url = (url or "http://localhost:3110").rstrip("/")
     return url, (token or "")
 
 
 BASE_URL, TOKEN = _load_creds()
 
-# Generous timeouts: veggie can be asleep (~8s cold); image processing/upscale
-# can take much longer than a normal request, so those tools override below.
+# Generous timeouts: the bridge host can be asleep (~8s cold on a laptop that
+# sleeps); image processing/upscale can take much longer than a normal
+# request, so those tools override below.
 _DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=15.0)
 _LONG_TIMEOUT = httpx.Timeout(300.0, connect=15.0)
 
@@ -75,12 +77,12 @@ def _result(resp: httpx.Response) -> str:
 
 def _err(e: Exception) -> str:
     if isinstance(e, httpx.TimeoutException):
-        return ("ERROR: request to the Eagle bridge timed out. veggie may be "
-                "asleep or the bridge is down — check the Eagle card on the "
-                "command-centre, then retry.")
+        return ("ERROR: request to the Eagle bridge timed out. The bridge host "
+                "may be asleep or the bridge process may be down — check it, "
+                "then retry.")
     if isinstance(e, httpx.ConnectError):
-        return ("ERROR: cannot reach the Eagle bridge. Confirm this machine is "
-                f"on the tailnet and {BASE_URL} is up.")
+        return ("ERROR: cannot reach the Eagle bridge. Confirm this machine can "
+                f"reach {BASE_URL} (same network / tailnet as the bridge host).")
     return f"ERROR: {type(e).__name__}: {e}"
 
 
@@ -94,8 +96,8 @@ mcp = FastMCP("eagle")
 def eagle_health() -> str:
     """Check the Eagle bridge: is it reachable and is the Eagle app connected.
 
-    Returns {ok, eagle, recipes}. eagle=true means the Eagle app on veggie is
-    up and writes will work. Use this first if other tools are failing.
+    Returns {ok, eagle, recipes}. eagle=true means the Eagle app on the bridge
+    host is up and writes will work. Use this first if other tools are failing.
     """
     try:
         with _client() as c:
@@ -128,8 +130,9 @@ def eagle_list_assets(
 
     Args:
         query: free-text search across asset name/tags.
-        brand: filter by brand folder (TFH, Coastly, OIB.Guide, Funky Legs,
-            Design & Chill).
+        brand: filter by brand folder (one of your configured brand folders,
+            e.g. "ORB", "Tidewash", "Wild Tights" — see eagle_product_types /
+            your bridge's brand config for the actual set).
         tag: filter by a workflow/state tag (new, ready, listed, archived) or
             any subject/style tag.
     """
@@ -176,7 +179,7 @@ def eagle_ingest_url(
 
     Args:
         url: public/tailnet URL of the image to pull in.
-        brand: brand folder to file it under (TFH, Coastly, ...).
+        brand: brand folder to file it under (one of your configured brands).
         airtable_design_id: optional Airtable Designs record id to back-link.
         tags: optional list of tags to apply.
     """
@@ -231,16 +234,22 @@ def eagle_ingest_file(
 
 
 @mcp.tool()
-def eagle_tag_asset(asset_id: str, tags: list[str]) -> str:
-    """Add workflow/subject tags to an existing Eagle asset.
+def eagle_tag_asset(
+    asset_id: str,
+    add: Optional[list[str]] = None,
+    remove: Optional[list[str]] = None,
+) -> str:
+    """Add and/or remove workflow/subject tags on an existing Eagle asset.
 
     Args:
         asset_id: Eagle item id.
-        tags: tags to add (e.g. ["ready", "listed"]).
+        add: tags to add (e.g. ["ready", "listed"]).
+        remove: tags to remove (e.g. ["new"]).
     """
     try:
         with _client() as c:
-            return _result(c.post(f"/api/assets/{asset_id}/tags", json={"tags": tags}))
+            body = {"add": add or [], "remove": remove or []}
+            return _result(c.post(f"/api/assets/{asset_id}/tags", json=body))
     except Exception as e:
         return _err(e)
 
