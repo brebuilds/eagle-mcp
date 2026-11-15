@@ -1,5 +1,7 @@
 # eagle-mcp
 
+[![CI](https://github.com/brebuilds/eagle-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/brebuilds/eagle-mcp/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Native MCP tools for Claude (and other agents) over the
 [eagle-bridge](https://github.com/brebuilds/eagle-bridge) HTTP API — a service that turns
 the [Eagle](https://eagle.cool) design-asset manager into a shared, network-reachable
